@@ -8,7 +8,7 @@ output:
     toc: true
 ---
 
-```{r setup, include = FALSE}
+```{r setup, include = FALSE, warning = F, message = F}
 # Set up the session with necessary packages
 session_packages = c("DESeq2","ggplot2","tidyr","matrixStats","dplyr","RColorBrewer",
                      "pheatmap","ggplot2","CLEAN","CLEAN.Hs","CLEAN.Mm","CLEAN.Rn",
@@ -21,10 +21,9 @@ for (lib_name in session_packages){
   })
 }
 
-devtools::load_all("/Users/johf/Documents/MitochondrialGeneAnalysis")
 # Install package
-#devtools::install_github("johanna0321/MitochondrialGeneAnalyses")
-#library("MitochondrialGeneAnalyses")
+devtools::install_github("johanna0321/MitochondrialGeneAnalysis")
+library("MitochondrialGeneAnalysis")
 
 # Load package data
 data(expected.counts.meta)
