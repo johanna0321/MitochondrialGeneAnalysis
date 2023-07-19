@@ -1,0 +1,23 @@
+Package: MitochondrialGeneAnalysis
+Title: Assign MitoCarta3.0 Pathways to Predefined Gene Sets
+Version: 0.0.0.9000
+Authors@R: 
+    person("Johanna", "Fleischman", , "johf@umich.edu", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-5491-4110"))
+Description: This package contains functions that scrape MitoCarta3.0 data from the web for easy assignment of a pre-defined list of genes to the mitochondrial pathways identified by MitoCarta, including systematic checking of MitoCarta gene names synonyms. This package also provides a function to plot the percent of each pathway that is represented in a filtered gene list or cluster of genes. Gene expression for the companion paper "Higher mitochondrial oxidative capacity is the primary molecular differentiator in muscle of rats with high and low intrinsic cardiorespiratory fitness" is provided in this package and can be used as example data.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    dplyr,
+    tidyr,
+    magrittr,
+    utils,
+    readxl,
+    stringr,
+    ggplot2,
+    rlang
+Depends:
+    R (>= 3.5.0)
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+LazyData: true

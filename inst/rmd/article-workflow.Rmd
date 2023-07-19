@@ -1,0 +1,422 @@
+---
+title: "Higher mitochondrial oxidative capacity is the primary molecular differentiator in muscle of rats with high and low intrinsic cardiorespiratory fitness"
+author: "Johanna Fleischman"
+date: "2023-07-19"
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+---
+
+```{r setup, include = FALSE}
+# Set up the session with necessary packages
+session_packages = c("DESeq2","ggplot2","tidyr","matrixStats","dplyr","RColorBrewer",
+                     "pheatmap","ggplot2","CLEAN","CLEAN.Hs","CLEAN.Mm","CLEAN.Rn",
+                     "AnnotationDbi","org.Rn.eg.db","org.Hs.eg.db","devtools","ggvenn",
+                     "metap", "stringr", "cowplot")
+
+for (lib_name in session_packages){
+  tryCatch({library(lib_name,character.only = T)}, error = function(e) {
+    print(paste("Cannot load",lib_name,"; please install"))
+  })
+}
+
+devtools::load_all("/Users/johf/Documents/MitochondrialGeneAnalysis")
+# Install package
+#devtools::install_github("johanna0321/MitochondrialGeneAnalyses")
+#library("MitochondrialGeneAnalyses")
+
+# Load package data
+data(expected.counts.meta)
+data(expected.counts)
+data(gene_name_conversion)
+
+knitr::opts_chunk$set(echo = TRUE, out.height='50%',out.width='50%')
+```
+
+## Calculate Differentially Expressed Genes and Pathways using DESeq2
+
+For this analysis, I used RNA-Seq data sets from 2 experiments:
+
+* Water fed (control) male and female HCR and LCR from a feeding experiment at the University of Toledo (Exps 3235 and 3510)
+* Saline-infused (control) male and female HCR and LCR from an infusion experiment at the University of Michigan (Exp 6548)
+
+The experiment-adjusted HCR/LCR line effect is determined using the formula $Gene \sim  Experiment + Line$ in in male rats and female rats separately
+
+The line-adjusted sex affect is calculated from the infusion experiment only (Exp 6548) using the formula $Gene \sim  Line + Sex$
+
+
+```{r deseq2, warning=FALSE, message=FALSE}
+
+# Verify that all samples are the same and are in the same order
+if(!all(colnames(expected.counts) %in% rownames(expected.counts.meta)) && 
+   !all(colnames(expected.counts) == rownames(expected.counts.meta))){
+  
+  warning("Count and metadata dataframes not ordered - ordering now")
+  reorder_idx <- match(rownames(expected.counts.meta),colnames(expected.counts))
+  expected.counts <- expected.counts[, reorder_idx]
+  
+  if(!all(colnames(expected.counts) %in% rownames(expected.counts.meta)) && 
+     !all(colnames(expected.counts) == rownames(expected.counts.meta))){
+    stop("Problem with count and metadata dataframes")
+  }
+}
+
+all_transcriptomic_data <- list(Male_Line_Effect = list(),
+                                Female_Line_Effect = list(),
+                                Sex_Effect = list())
+
+for(i in c("Male_Line_Effect","Female_Line_Effect","Sex_Effect")) {
+  
+  print(paste0("----------Starting ", i,"----------"))
+  
+  # Define contrast
+  if(i == "Male_Line_Effect"){
+    expected.counts.meta.temp <- expected.counts.meta %>% 
+      dplyr::filter(Sex == "Male")
+    expected.counts.temp <- expected.counts[,rownames(expected.counts.meta.temp)]
+    temp_form <- "~ Exp + Line"
+    temp_cont <- c("Line","HCR","LCR")
+    
+  } else if(i == "Female_Line_Effect") {
+    expected.counts.meta.temp <- expected.counts.meta %>% 
+      dplyr::filter(Sex == "Female")
+    expected.counts.temp <- expected.counts[,rownames(expected.counts.meta.temp)]
+    temp_form <- "~ Exp + Line"
+    temp_cont <- c("Line","HCR","LCR")
+    
+  } else {
+    expected.counts.meta.temp <- expected.counts.meta %>% 
+      dplyr::filter(Exp == "6548")
+    expected.counts.temp <- expected.counts[,rownames(expected.counts.meta.temp)]
+    temp_form <- "~ Line + Sex"
+    temp_cont <- c("Sex","Male","Female")
+    
+  }
+  
+  # Set up differential expression experiment design
+  # For each sex, we want the Line effect, adjusted for Experiment
+  dds <- DESeq2::DESeqDataSetFromMatrix(countData = expected.counts.temp,
+                                colData = expected.counts.meta.temp,
+                                design = stats::as.formula(temp_form))
+  
+  # Only keep genes with > 10 counts across all samples to remove noise
+  keep <- rowSums( counts(dds) ) >= 10
+  dds <- dds[keep,]
+  
+  # Run DESeq command on the summarized experiment file
+  dds <- DESeq2::DESeq(dds)
+  
+  # Extract results for Line contrast and set up data frame
+  res <- DESeq2::results(dds, contrast=temp_cont) %>% 
+    as.data.frame()
+  res <- cbind("gene_id" = row.names(res), res) 
+
+  # Bind to other usable gene names for pathway and MitoCarta analysis
+  degs <- right_join(gene_name_conversion, res, by = "gene_id")
+  
+  # Pathway analysis 
+  sigvals <- as.numeric(degs$pvalue)
+  geneids <- as.numeric(degs$entrezgene_id)
+  
+  pathways <- LRpath(sigvals, geneids, min.g=10, max.g=NA, sig.cutoff=0.05, 
+                    functionalCategories="KEGG", 
+                    odds.min.max=c(0.001,0.5), species="rno") 
+  
+  all_transcriptomic_data[[i]] <- list(DEGs = degs, Pathways = pathways)
+}
+```
+
+## Unbiased Differential Gene Expression Analysis
+
+### Volcano Plots (Figure 1A)
+
+The data shown in the volcano plots are differential gene expression analyses performed separately for males and females using DESeq2 as above. Differentially expressed genes were determined for each sex, instead of combining all the animals, because sex and experiment were confounded as batches for one experiment but not the other. 
+
+Genes that are colored have an adjusted p-value $< 0.05$ 
+
+
+```{r volcano plots, echo = FALSE, eval = T, warning=FALSE}
+
+# I first combined the male and female datasets into one dataframe, and label the
+# significant genes, for faceted plotting in ggplot 
+line_maleonly <- all_transcriptomic_data[["Male_Line_Effect"]][["DEGs"]] %>%
+  dplyr::mutate(Sex = "Male")
+line_femaleonly <- all_transcriptomic_data[["Female_Line_Effect"]][["DEGs"]] %>%
+  dplyr::mutate(Sex = "Female")
+line_genes_by_sex <- rbind(line_maleonly, line_femaleonly) %>%
+  dplyr::mutate(Significant = ifelse(padj < 0.05, "Yes", "No"))
+
+# Make volcano plot
+ggplot2::ggplot(line_genes_by_sex,
+       aes(x = log2FoldChange, y = -log10(padj), 
+           color = interaction(Sex,Significant)
+           )) +
+      geom_point(size = 0.5) +
+    geom_hline(yintercept = 0, color = "grey", linetype = "dashed") +
+    geom_vline(xintercept = 0, color = "grey", linetype = "dashed") +
+  xlim(-10,10) +
+  ylab(expression('-log'[10]*'(p-value)')) + 
+  xlab(expression('log'[2]*'(Fold Change)')) + 
+  scale_color_manual(values = c("black","black","#CD534CFF","#0073C2FF")) +
+    theme(axis.line = element_line(colour="black"),
+          panel.background = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.y = element_text(size=12, color = "black"),
+          legend.position = "none",
+          aspect.ratio = 0.8,
+          panel.grid.major = element_blank()) +
+  facet_wrap(~Sex)
+
+# I wanted to see the overlap in significant genes between male and female
+significant_female_genes <- line_genes_by_sex %>%
+  dplyr::filter(Significant == "Yes", Sex == "Female") %>% pull(gene_id) 
+
+significant_male_genes <- line_genes_by_sex %>%
+  dplyr::filter(Significant == "Yes", Sex == "Male") %>% pull(gene_id) 
+
+venn_diagram_data <- list(significant_female_genes, significant_male_genes)
+names(venn_diagram_data) <- c("Female (p < 0.05)", "Male (p < 0.05)")
+ggvenn(venn_diagram_data, fill_color = c("#CD534CFF","#0073C2FF"),
+       stroke_size = 0.5, set_name_size = 5)
+  
+
+```
+
+### Pathway Analysis (Figure 1B)
+
+Pathways were determined using the datasets generated for the volcano plots. I continued to pursue a by-sex approach given the fact that (1) we have sex-wise mitochondrial respiration data, and (2) the Venn diagram of overlapping significant genes indicated that only $40.2\%$ of the significant genes overlapped. 
+
+For pathway analysis, I used LRPath (through the R CLEAN package) which accepts the entire list of p-values and Entrez IDs for differential gene expression data sets. I observed KEGG pathways. In the following plot, I have plotted the odds ratios of the pathways after filtering for pathways that had an FDR $<0.05$ for males or females. Odds ratios $>1$ indicate that the pathway is upregulated in HCR rats. 
+
+
+```{r pathway bargraph, echo = FALSE, eval = T, warning=FALSE, out.height='100%',out.width='100%'}
+
+# I first combined the male and female datasets into one dataframe, and filter
+# for the significant pathways
+lrpath_maleonly <- all_transcriptomic_data[["Male_Line_Effect"]][["Pathways"]] %>%
+  dplyr::mutate(Sex = "Male")
+lrpath_femaleonly <- all_transcriptomic_data[["Female_Line_Effect"]][["Pathways"]] %>%
+  dplyr::mutate(Sex = "Female")
+lrpath_by_sex <- rbind(lrpath_maleonly, lrpath_femaleonly) 
+
+# Determine the significant pathways for each sex and fild the union
+pathways_male <- lrpath_maleonly %>% 
+  dplyr::filter(FDR < 0.05) %>% 
+  dplyr::pull(category.description)
+pathways_female <- lrpath_femaleonly %>% 
+  dplyr::filter(FDR < 0.05) %>% 
+  dplyr::pull(category.description)
+pathways_both <- generics::union(pathways_male, pathways_female)
+
+lrpath_by_sex <- lrpath_by_sex %>%
+  filter(category.description %in% pathways_both) %>%
+  dplyr::select(category.description, odds.ratio, Sex) %>%
+  arrange(odds.ratio) %>% 
+    mutate(category.description = factor(category.description, as.character(unique(category.description))))
+
+ggplot(lrpath_by_sex) + 
+  geom_col(aes(y = category.description, x = odds.ratio, fill = Sex), 
+           position = position_dodge2(padding = 0)) + 
+  scale_fill_manual(values = c("#CD534CFF","#0073C2FF")) +
+  xlab("Odds Ratio") + 
+  ylab("") +
+  geom_vline(xintercept=1, color = "grey", linetype = "dashed") +
+  ggtitle(paste0("Significant Line Pathways")) +
+  theme(axis.line = element_line(colour="black"),
+        panel.background = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text = element_text(size=10, color = "black"),
+        axis.title = element_text(size=12, color = "black"),
+        aspect.ratio = 4,
+        panel.grid.major = element_blank())
+
+```
+
+## MitoCarta Analysis (Figure 2)
+
+Next, I took a closer look at specifically mitochondrial genes. This targeted approach was warranted given that our unbiased approach indicated that the most significantly regulated pathways in both males and females were mitochondrial metabolic pathways. Because the pathways regulated by Line were nearly identical between males and females, I combine the male and female data sets here and perform mitochondrial gene set filtering with the following steps:
+
+1. Filter for genes that are present in both the MitoCarta gene list and in both RNA Seq differential expression datasets. *Note: the RNA Seq differential expression data set scans both the gene names and the synonym names in the MitoCarta dataset in order to match as many genes as possible.*
+2. Combine the 2 p-values (one each for male and female data sets) using the sum of logs (Fisher's) method and filter for genes with combined p-values < 0.05
+3. Filter out genes that do not have the same direction of effect in the 2 different datasets
+4. Filter out pathways that are not annotated
+
+```{r mitocarta functions, warning=F}
+
+# Merge male and female gene expression data frames and reassign column names
+all_dfs <- all_transcriptomic_data[["Female_Line_Effect"]][["DEGs"]] %>%
+  dplyr::select(c("gene_id","entrezgene_id","external_gene_name","description","log2FoldChange","padj")) %>%
+  dplyr::left_join(., all_transcriptomic_data[["Male_Line_Effect"]][["DEGs"]][,c("gene_id","log2FoldChange","padj")], by = "gene_id") %>%
+  dplyr::rename(log2FC_F = log2FoldChange.x, padj_F = padj.x, log2FC_M = log2FoldChange.y, padj_M = padj.y)
+
+#####################################################
+##                                                 ##
+##    User-friendly functions for performing       ## 
+##    MitoCarta pathway assignment and analysis    ##
+##    on a provided list of gene symbols, IDs,     ##
+##   or Uniprot IDs (see function documentation).  ##
+##                                                 ##
+#####################################################
+
+# Extract MitoCarta data from website; available species are mouse and human
+mitocarta_data <- extract_mitocarta_data(species = "mouse",
+                                         gene_id_type = "gene_symbol"
+                                         )
+
+# If providing a list of NCBI gene names, optionally check if any missing names
+# are listed as a synonym by MitoCarta. Recommended. 
+gene_names_checked <- check_mitocarta_synonyms(
+  gene_names = all_dfs$external_gene_name,
+  mitocarta_data = mitocarta_data
+  )
+
+# Assigned pathways to gene names using mitocarta_data_formatted
+mitocarta_data <- assign_mitocarta_pathways(
+  gene_names = gene_names_checked$mitocarta_id,
+  mitocarta_data = mitocarta_data
+  )
+
+#####################################################
+
+# General steps for merging dataframes
+data_all <- gene_names_checked %>% 
+  rename(external_gene_name = given_id, Name = mitocarta_id) %>% 
+  right_join(., all_dfs, by = "external_gene_name") %>%
+  left_join(., mitocarta_data[["Assigned_Pathways"]], by = "Name")
+
+# Add mean logFC between male and female
+# Perform Fisher method to combine adjusted p-values for female and male
+data_all$log2FC_mean <- sapply(1:nrow(data_all), function(x) {
+  mean(c(data_all$log2FC_F[x],data_all$log2FC_M[x]))}
+  )
+
+data_all$padj_fisher_combined <- sapply(1:nrow(data_all), function(x) {
+  ifelse(!is.na(data_all$padj_F[x])&&(!is.na(data_all$padj_F[x])), metap::sumlog(c(data_all$padj_F[x],data_all$padj_F[x]))$p, NA)}
+  )
+
+# At this point in analysis, data_all object was saved as a .csv to view gene expression
+# data and pathway assignment for all genes 
+  
+# Specific steps taken for my data put into MitoCarta analysis
+# Remove any genes with non equal direction of effect or no pathway assignment
+# Filter for combined p-value (Fisher) < 0.05
+data_filtered <- data_all %>%
+  filter(!is.na(Main.Path)) %>%
+  filter(padj_fisher_combined < 0.05) %>%
+  filter(sign(log2FC_M) == sign(log2FC_F))
+
+print(paste0("Of ",length(mitocarta_data$MitoCarta_MitoGenes$Symbol)," mitochondrial genes annotated by MitoCarta, ",
+             table(mitocarta_data$MitoCarta_MitoGenes$Symbol %in% 
+                     na.omit(gene_names_checked$mitocarta_id))[[2]], " (",
+             round(table(mitocarta_data$MitoCarta_MitoGenes$Symbol %in% 
+                           na.omit(gene_names_checked$mitocarta_id))[[2]]/length(mitocarta_data$MitoCarta_MitoGenes$Symbol),3)*100, "%) of these genes were present in the provided dataset"))
+
+print(paste0("This filter results in a dataset with ", length(unique(data_filtered$gene_id)), " mitochondrial genes that are significantly differentially expressed between HCR and LCR when sexes are combined"))
+
+```
+
+### Quantifying the number and percentage of genes in pathways
+
+Here, we plot the number of genes that filter into main pathways annotated by MitoCarta. Note that genes can be assigned to multiple pathways. This functions also calculates the number of genes that MitoCarta assigns to each sub pathway, so that the percent of the pathway represented in a filtered dataset can be calculated. For the percent calculations here, the number of genes that MitoCarta assigns to each pathway, regardless of it's presence in our original dataset, is used as the denominator. 
+
+In the percent graphs, the color indicates the mean log2(Fold Change) of the genes included in that pathway.
+
+
+```{r mitocarta plots, eval = T, warning=FALSE, out.height='50%',out.width='50%'}
+
+##################################################
+##                                              ##
+##    User-friendly function for graphing       ## 
+##     the number of genes in a filtered        ##
+##    dataset or the percentage of genes in     ##
+##   in this dataset that occupy a pathway      ##
+##                                              ##
+##################################################
+
+bar_graphs_mitocarta <- list()
+
+for(plot_name in c("Primary","OXPHOS","Metabolism","Metals and cofactors",
+              "Lipid metabolism", "Carbohydrate metabolism", "Amino acid metabolism")){
+  
+  temp_plot <- plot_mitocarta_pathways(filtered_data = data_filtered, 
+                          mitocarta_data = mitocarta_data,
+                          subpath = plot_name,
+                          fc_name = "log2FC_mean")
+  
+  bar_graphs_mitocarta[[plot_name]] <- temp_plot
+  
+  print(temp_plot[["GeneNumber"]])
+  temp_plot_no_legend <- temp_plot[["PathwayPercent"]] + ggplot2::theme(legend.position = "none")
+  print(temp_plot_no_legend)
+  
+}
+
+  logFC_legend <- cowplot::get_legend(temp_plot[["PathwayPercent"]])
+  grid.newpage()
+  grid.draw(logFC_legend)
+
+```
+
+
+## Gene Expression Heatmap for Specific Pathways (Figure 2)
+
+Here, we generate the heatmaps showing the logFC with indicated significant for both the male and female datasets for the pathways indicated in the for-loop. These heatmaps plot all the genes associated with the grepped path name. They are stored in a list item (not printed).
+
+
+```{r heatmaps, warning = FALSE, outwidth = '20%'}
+
+mito_heatmaps <- list()
+
+plot_data <- mitocarta_data[["MitoCarta_MitoGenes"]] %>%
+  
+  # Select MitoCarta gene names and their pathways
+  dplyr::select(Name,Pathways) %>%
+  dplyr::rename(mitocarta_id = Name) %>%
+  
+  # For this study, join with the list of checked gene symbols
+  dplyr::left_join(., gene_names_checked, by = "mitocarta_id") %>%
+  stats::na.omit() %>%
+  dplyr::rename(external_gene_name = given_id) %>%
+  
+  # For this study, join with gene list with genes row bound by sex
+  dplyr::left_join(line_genes_by_sex, ., by = "external_gene_name") %>%
+  
+  # Any genes that are missing a Significance identifier, mark as not Significant
+  dplyr::mutate(Significant = ifelse(is.na(Significant),"No",Significant))
+
+
+for(subpath in c("OXPHOS","Fatty acid oxidation","TCA","Pyruvate metabolism")) {
+  
+plot_data_temp <- plot_data %>%
+  filter(grepl(subpath, Pathways)) %>%
+  filter(external_gene_name != "",external_gene_name != ".") %>%
+  group_by(external_gene_name, Sex) %>%
+  slice_head(n=1)
+
+ynames <- plot_data_temp %>% arrange(external_gene_name) %>% pull(external_gene_name)
+
+p <- ggplot(plot_data_temp) +
+  geom_tile(aes(fill=log2FoldChange, y=external_gene_name, x=Sex, color=Significant),
+                width=0.90,height=1.65, linewidth = 0.3) +
+  scale_fill_gradient2("Log2FC",low="darkgreen",
+                       mid = "white",
+                       high = "firebrick", 
+                       midpoint = 0, 
+                       limits = c(-2.3,2.3)) +
+  scale_color_manual(values = c("white","black")) +
+  scale_y_discrete(limits = rev(ynames)) +
+  ggtitle(subpath) +
+  ylab("") +
+  xlab("") +
+  theme(axis.ticks =element_blank(),
+        axis.text.x = element_text(angle=90),
+        strip.text = element_text(size=10),
+        axis.text.y = element_text(size=10),
+        panel.background = element_blank()) 
+
+mito_heatmaps[[subpath]] <- p
+
+}
+
+```
