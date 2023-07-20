@@ -1,8 +1,5 @@
 # MitochondrialGeneAnalysis
 
-*An R companion package for "Higher mitochondrial oxidative capacity is the primary molecular 
-differentiator in muscle of rats with high and low intrinsic cardiorespiratory fitness"*
-  
 ## Overview
   
 This package contains functions that scrape MitoCarta3.0 data from the web for easy assignment 
