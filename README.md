@@ -6,9 +6,6 @@ This package contains functions that scrape MitoCarta3.0 data from the web for e
 of a pre-defined list of genes to the mitochondrial pathways identified by MitoCarta, including 
 systematic checking of MitoCarta gene names synonyms. This package also provides a function to 
 plot the percent of each pathway that is represented in a filtered gene list or cluster of genes. 
-Gene expression for the companion paper "Higher mitochondrial oxidative capacity is the primary 
-molecular differentiator in muscle of rats with high and low intrinsic cardiorespiratory fitness" 
-is provided in this package and can be used as example data.
 
 ## Package Updates
 
