@@ -1,5 +1,9 @@
 # MitochondrialGeneAnalysis
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/johanna0321/MitochondrialGeneAnalysis/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/johanna0321/MitochondrialGeneAnalysis/actions/workflows/R-CMD-check.yaml)
+<!-- badges: end -->
+
 ## Overview
   
 This package contains functions that scrape MitoCarta3.0 data from the web for easy assignment 
