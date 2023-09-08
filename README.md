@@ -11,7 +11,9 @@ of a pre-defined list of genes to the mitochondrial pathways identified by MitoC
 systematic checking of MitoCarta gene names synonyms. This package also provides a function to 
 plot the percent of each pathway that is represented in a filtered gene list or cluster of genes. 
 
-The functions, data, and .Rmd workflow (inst/rmd/) herein are a companion to the article [Higher mitochondrial oxidative capacity is the primary molecular differentiator in muscle of rats with high and low intrinsic cardiorespiratory fitness](https://www.sciencedirect.com/science/article/pii/S2212877823001278?via%3Dihub)
+The functions, data, and .Rmd workflow herein are a companion to the following article:
+
+Fleischman, J. Y., Van den Bergh, F., Collins, N. L., Bowers, M., Beard, D. A., & Burant, C. F. (2023). Higher mitochondrial oxidative capacity is the primary molecular differentiator in muscle of rats with high and low intrinsic cardiorespiratory fitness. In Molecular Metabolism (Vol. 76, p. 101793). Elsevier BV. [https://doi.org/10.1016/j.molmet.2023.101793](https://doi.org/10.1016/j.molmet.2023.101793)
 
 ## Package Updates
 
